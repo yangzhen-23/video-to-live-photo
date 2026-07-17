@@ -1,0 +1,18 @@
+# Keep source files consistent across Windows, macOS, and Linux checkouts.
+*.py text eol=lf
+*.md text eol=lf
+*.toml text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.mp4 binary
+*.mov binary
+*.zip binary
+*.exe binary
+*.dll binary

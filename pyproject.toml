@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "video-to-live-photo"
+version = "0.2.0"
+description = "将视频转换为 iPhone、Android、vivo/iQOO 和 Windows 动态照片兼容文件"
+authors = [{ name = "杨振" }]
+readme = "README.md"
+license = { text = "Apache-2.0" }
+keywords = ["Live Photo", "Motion Photo", "Dynamic Photos", "vivo", "iQOO", "PySide6"]
+requires-python = ">=3.10"
+dependencies = [
+  "Pillow>=10.0,<12",
+  "PySide6>=6.6,<7",
+  "imageio-ffmpeg>=0.5,<1",
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "License :: OSI Approved :: Apache Software License",
+  "Operating System :: Microsoft :: Windows",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+]
+
+[project.scripts]
+video-to-live-photo = "livephoto.cli:main"
+video-to-live-photo-gui = "livephoto.app:main"
+
+[tool.setuptools.packages.find]
+include = ["livephoto*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+norecursedirs = ["Live图成品"]

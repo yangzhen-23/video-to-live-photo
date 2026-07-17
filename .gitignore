@@ -1,0 +1,39 @@
+# Python environments and caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+*.egg-info/
+
+# Build and local verification output
+build/
+dist/
+build_tools/
+release/
+verification/
+*.spec.bak
+.research-live.mov
+Live图成品/
+
+# Personal media: never commit these files
+private_samples/
+
+# Local configuration and logs
+.env
+.env.*
+*.log
+
+# Editors and operating systems
+.agents/
+.codex/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+desktop.ini
