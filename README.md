@@ -105,6 +105,10 @@ docs/           架构、兼容性与开发文档
 
 架构和数据流详见 [架构说明](docs/ARCHITECTURE.md)。
 
+## 学习资料
+
+如果你只掌握少量 Python 基础，可以阅读 [项目源码详解与 Git/GitHub 初学者教程](docs/PROJECT_CODE_AND_GIT_GUIDE.md)。该报告按一次转换的调用链逐个解释源码、测试、打包和 CI，并系统介绍 Git 日常命令、分支、撤销、发布与本项目练习。
+
 ## 已知限制
 
 - Android 厂商相册对 Motion Photo 的支持并不一致。
