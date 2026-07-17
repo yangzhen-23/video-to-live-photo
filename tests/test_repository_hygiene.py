@@ -53,6 +53,7 @@ def test_public_repository_configuration_exists():
     assert "windows-latest" in workflow_text
     assert "3.10" in workflow_text
     assert "3.12" in workflow_text
+    assert "PYTHONUTF8" in workflow_text
     assert "check_repository.py" in workflow_text
 
 

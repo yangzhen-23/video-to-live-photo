@@ -1,7 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 杨振
 from pathlib import Path
-import tomllib
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python 3.10
+    import tomli as tomllib
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -28,3 +32,9 @@ def test_windows_build_copies_legal_files():
         "COMPATIBILITY.md",
     ):
         assert name in script
+
+
+def test_python_310_test_dependency_provides_tomllib_fallback():
+    requirements = (ROOT / "requirements-dev.txt").read_text(encoding="utf-8")
+
+    assert 'tomli>=2; python_version < "3.11"' in requirements
