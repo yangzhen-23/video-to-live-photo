@@ -33,8 +33,15 @@ def test_main_window_contains_beginner_workflow_controls(app):
     assert window.drop_area.acceptDrops() is True
     assert window.duration_spin.value() == 3.0
     assert window.cover_spin.value() == 1.5
+    assert window.start_spin.text() == "00:00.00"
+    assert window.duration_spin.text() == "00:03.00"
     assert window.quality_combo.currentData() == "balanced"
-    assert window.convert_button.text() == "生成 Live 图兼容包"
+    assert window.segment_list.count() == 1
+    assert window.segment_list.currentRow() == 0
+    assert window.remove_segment_button.isEnabled() is False
+    assert set(window.target_checks) == {"iphone", "android", "vivo", "windows"}
+    assert all(not box.isChecked() for box in window.target_checks.values())
+    assert window.convert_button.text() == "生成所选设备的 Live 图"
     assert window.convert_button.isEnabled() is False
     assert window.progress_bar.value() == 0
     assert window.open_folder_button.isEnabled() is False
@@ -63,6 +70,8 @@ def test_video_info_updates_ranges_and_enables_conversion(app, tmp_path: Path):
     assert window.start_spin.maximum() == 5.0
     assert window.cover_spin.minimum() == 0.0
     assert window.cover_spin.maximum() == 3.0
+    assert window.convert_button.isEnabled() is False
+    window.target_checks["vivo"].setChecked(True)
     assert window.convert_button.isEnabled() is True
     window.close()
 
@@ -88,6 +97,8 @@ def test_async_video_probe_keeps_worker_alive_until_result(
         loop.exec()
 
         assert window._video_info == expected
+        assert window.convert_button.isEnabled() is False
+        window.target_checks["vivo"].setChecked(True)
         assert window.convert_button.isEnabled() is True
     finally:
         if window._probe_thread and window._probe_thread.isRunning():
@@ -114,15 +125,70 @@ def test_time_sliders_and_spin_boxes_stay_synchronized(app, tmp_path: Path):
     window.close()
 
 
+def test_segments_can_be_added_switched_and_deleted(app, tmp_path: Path):
+    source = tmp_path / "input.mp4"
+    source.write_bytes(b"video")
+    window = MainWindow()
+    window.input_edit.setText(str(source))
+    window.output_edit.setText(str(tmp_path / "out"))
+    window.apply_video_info(VideoInfo(20.0, 1920, 1080, 30.0, True))
+
+    window.start_spin.setValue(2.0)
+    window.duration_spin.setValue(3.0)
+    window.cover_spin.setValue(3.0)
+    window.add_segment()
+
+    assert window.segment_list.count() == 2
+    assert window.segment_list.currentRow() == 1
+    assert window.start_spin.value() == pytest.approx(5.0)
+    assert window.duration_spin.value() == pytest.approx(3.0)
+    assert window.cover_spin.value() == pytest.approx(6.5)
+    assert window.convert_button.text() == "生成 2 个片段的 Live 图"
+
+    window.segment_list.setCurrentRow(0)
+    assert window.start_spin.value() == pytest.approx(2.0)
+    assert window.cover_spin.value() == pytest.approx(3.0)
+
+    window.remove_segment()
+    assert window.segment_list.count() == 1
+    assert window.remove_segment_button.isEnabled() is False
+    window.close()
+
+
+def test_conversion_options_include_every_segment_and_selected_target(app, tmp_path: Path):
+    source = tmp_path / "input.mp4"
+    source.write_bytes(b"video")
+    window = MainWindow()
+    window.input_edit.setText(str(source))
+    window.output_edit.setText(str(tmp_path / "out"))
+    window.apply_video_info(VideoInfo(20.0, 1920, 1080, 30.0, True))
+    window.target_checks["vivo"].setChecked(True)
+    window.target_checks["windows"].setChecked(True)
+    window.add_segment()
+
+    options = window._build_conversion_options()
+
+    assert len(options) == 2
+    assert [item.segment_label for item in options] == ["片段01", "片段02"]
+    assert all(item.targets == frozenset({"vivo", "windows"}) for item in options)
+    assert all(item.output_dir == tmp_path / "out" for item in options)
+    window.close()
+
+
 def test_busy_state_disables_editing_and_exposes_cancel(app):
     window = MainWindow()
     window.set_busy(True)
     assert window.convert_button.isEnabled() is False
     assert window.cancel_button.isEnabled() is True
     assert window.input_edit.isEnabled() is False
+    assert window.segment_list.isEnabled() is False
+    assert window.add_segment_button.isEnabled() is False
+    assert all(not box.isEnabled() for box in window.target_checks.values())
     window.set_busy(False)
     assert window.cancel_button.isEnabled() is False
     assert window.input_edit.isEnabled() is True
+    assert window.segment_list.isEnabled() is True
+    assert window.add_segment_button.isEnabled() is True
     window.close()
 
 
