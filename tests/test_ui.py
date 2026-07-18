@@ -28,6 +28,12 @@ def app():
     yield instance
 
 
+def _style_rule(selector: str) -> str:
+    match = re.search(rf"{re.escape(selector)}\s*\{{([^}}]+)\}}", APP_STYLE)
+    assert match is not None, f"缺少样式规则：{selector}"
+    return match.group(1)
+
+
 def test_main_window_contains_beginner_workflow_controls(app):
     window = MainWindow()
     assert window.windowTitle() == "视频转 Live 图"
@@ -195,19 +201,48 @@ def test_busy_state_disables_editing_and_exposes_cancel(app):
 
 
 def test_message_boxes_have_explicit_high_contrast_colors():
-    def rule(selector: str) -> str:
-        match = re.search(rf"{re.escape(selector)}\s*\{{([^}}]+)\}}", APP_STYLE)
-        assert match is not None, f"缺少样式规则：{selector}"
-        return match.group(1)
-
-    dialog_rule = rule("QMessageBox")
-    label_rule = rule("QMessageBox QLabel")
-    button_rule = rule("QMessageBox QPushButton")
+    dialog_rule = _style_rule("QMessageBox")
+    label_rule = _style_rule("QMessageBox QLabel")
+    button_rule = _style_rule("QMessageBox QPushButton")
 
     assert "background: #f4f7fb" in dialog_rule
     assert "color: #17233c" in label_rule
     assert "background: #ffffff" in button_rule
     assert "color: #17233c" in button_rule
+
+
+def test_message_box_labels_do_not_force_the_icon_column_wide():
+    generic_label = _style_rule("QMessageBox QLabel")
+    message_label = _style_rule("QMessageBox QLabel#qt_msgbox_label")
+    icon_label = _style_rule("QMessageBox QLabel#qt_msgboxex_icon_label")
+
+    assert "min-width" not in generic_label
+    assert "min-width: 0px" in message_label
+    assert "min-width: 0px" in icon_label
+
+
+def test_segment_list_has_readable_normal_hover_and_selected_states():
+    list_rule = _style_rule("QListWidget#segmentList")
+    item_rule = _style_rule("QListWidget#segmentList::item")
+    hover_rule = _style_rule("QListWidget#segmentList::item:hover")
+    selected_rule = _style_rule("QListWidget#segmentList::item:selected")
+
+    for rule in (list_rule, item_rule, hover_rule, selected_rule):
+        assert "color:" in rule
+    assert "background:" in list_rule
+    assert "background:" in hover_rule
+    assert "background:" in selected_rule
+
+
+def test_unchecked_checkbox_indicator_remains_visible_on_hover():
+    unchecked = _style_rule("QCheckBox::indicator:unchecked")
+    hover = _style_rule("QCheckBox::indicator:unchecked:hover")
+
+    assert "border:" in unchecked
+    assert "background:" in unchecked
+    assert "border:" in hover
+    assert "background:" in hover
+    assert "QCheckBox::indicator:checked" not in APP_STYLE
 
 
 def test_conversion_worker_emits_progress_and_completion(tmp_path: Path):
