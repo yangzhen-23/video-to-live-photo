@@ -16,6 +16,7 @@ from PySide6.QtWidgets import QApplication, QWidget
 from livephoto.core.models import OutputBundle, VideoInfo
 from livephoto.ui.main_window import MainWindow
 from livephoto.ui.worker import ConversionWorker
+import livephoto.ui.worker as worker_module
 from scripts.capture_ui import load_capture_font
 
 
@@ -126,20 +127,12 @@ def test_busy_state_disables_editing_and_exposes_cancel(app):
 
 
 def test_conversion_worker_emits_progress_and_completion(tmp_path: Path):
-    paths = [
-        tmp_path / name
-        for name in (
-            "a.jpg",
-            "a.mov",
-            "aMP.jpg",
-            "IMG_20260718_120000.jpg",
-            "IMG_20260718_120000.mp4",
-            "w.jpg",
-            "w.mp4",
-            "manifest.json",
-        )
-    ]
-    bundle = OutputBundle(tmp_path, *paths)
+    bundle = OutputBundle(
+        tmp_path,
+        (),
+        tmp_path / "manifest.json",
+        tmp_path / "使用说明.txt",
+    )
 
     class FakeConverter:
         def convert(self, options, progress, cancel):
@@ -155,3 +148,91 @@ def test_conversion_worker_emits_progress_and_completion(tmp_path: Path):
     worker.run()
     assert progress == [(50, "处理中")]
     assert completed == [bundle]
+
+
+def _batch_bundle(tmp_path: Path, name: str) -> OutputBundle:
+    directory = tmp_path / name
+    return OutputBundle(
+        directory,
+        (),
+        directory / "manifest.json",
+        directory / "使用说明.txt",
+    )
+
+
+def test_batch_conversion_worker_runs_segments_and_aggregates_progress(tmp_path: Path):
+    first = _batch_bundle(tmp_path, "first")
+    second = _batch_bundle(tmp_path, "second")
+    options = (type("Option", (), {"segment_label": "片段01"})(), type("Option", (), {"segment_label": "片段02"})())
+    calls = []
+
+    class FakeConverter:
+        def convert(self, option, progress, cancel):
+            calls.append(option.segment_label)
+            assert cancel() is False
+            progress(0, "开始")
+            progress(50, "处理中")
+            progress(100, "完成")
+            return first if option.segment_label == "片段01" else second
+
+    worker = worker_module.BatchConversionWorker(FakeConverter(), options)
+    progress = []
+    completed = []
+    worker.progress.connect(lambda value, text: progress.append((value, text)))
+    worker.completed.connect(completed.append)
+
+    worker.run()
+
+    assert calls == ["片段01", "片段02"]
+    assert progress == [
+        (0, "[片段 1/2] 开始"),
+        (25, "[片段 1/2] 处理中"),
+        (50, "[片段 1/2] 完成"),
+        (50, "[片段 2/2] 开始"),
+        (75, "[片段 2/2] 处理中"),
+        (100, "[片段 2/2] 完成"),
+    ]
+    assert completed == [(first, second)]
+
+
+def test_batch_conversion_worker_reports_failed_segment(tmp_path: Path):
+    first = _batch_bundle(tmp_path, "first")
+    options = (object(), object(), object())
+    calls = []
+
+    class FakeConverter:
+        def convert(self, option, progress, cancel):
+            calls.append(option)
+            if len(calls) == 2:
+                raise RuntimeError("planned failure")
+            return first
+
+    worker = worker_module.BatchConversionWorker(FakeConverter(), options)
+    failed = []
+    worker.failed.connect(failed.append)
+
+    worker.run()
+
+    assert calls == list(options[:2])
+    assert failed == ["片段 2：planned failure"]
+
+
+def test_batch_conversion_worker_cancel_stops_remaining_segments(tmp_path: Path):
+    first = _batch_bundle(tmp_path, "first")
+    options = (object(), object())
+    calls = []
+
+    class FakeConverter:
+        def convert(self, option, progress, cancel):
+            calls.append(option)
+            worker.cancel()
+            return first
+
+    worker = worker_module.BatchConversionWorker(FakeConverter(), options)
+    failed = []
+    worker.failed.connect(failed.append)
+
+    worker.run()
+
+    assert calls == [options[0]]
+    assert failed == ["用户取消了转换"]
