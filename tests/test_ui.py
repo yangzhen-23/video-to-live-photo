@@ -2,6 +2,7 @@
 # Copyright 2026 杨振
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,7 @@ from PySide6.QtWidgets import QApplication, QWidget
 
 from livephoto.core.models import OutputBundle, VideoInfo
 from livephoto.ui.main_window import MainWindow
+from livephoto.ui.theme import APP_STYLE
 from livephoto.ui.worker import ConversionWorker
 import livephoto.ui.worker as worker_module
 from scripts.capture_ui import load_capture_font
@@ -190,6 +192,22 @@ def test_busy_state_disables_editing_and_exposes_cancel(app):
     assert window.segment_list.isEnabled() is True
     assert window.add_segment_button.isEnabled() is True
     window.close()
+
+
+def test_message_boxes_have_explicit_high_contrast_colors():
+    def rule(selector: str) -> str:
+        match = re.search(rf"{re.escape(selector)}\s*\{{([^}}]+)\}}", APP_STYLE)
+        assert match is not None, f"缺少样式规则：{selector}"
+        return match.group(1)
+
+    dialog_rule = rule("QMessageBox")
+    label_rule = rule("QMessageBox QLabel")
+    button_rule = rule("QMessageBox QPushButton")
+
+    assert "background: #f4f7fb" in dialog_rule
+    assert "color: #17233c" in label_rule
+    assert "background: #ffffff" in button_rule
+    assert "color: #17233c" in button_rule
 
 
 def test_conversion_worker_emits_progress_and_completion(tmp_path: Path):

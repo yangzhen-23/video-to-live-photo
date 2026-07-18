@@ -57,6 +57,18 @@ QLabel#infoPill {
     color: #315272; background: #edf5ff; border-radius: 8px; padding: 7px 10px;
 }
 QLabel#statusLabel { color: #40516d; font-weight: 600; }
+QLabel#targetHint { color: #718096; font-size: 12px; padding-left: 23px; }
 QCheckBox { spacing: 8px; color: #263650; }
 QCheckBox:disabled { color: #718096; }
+QMessageBox { background: #f4f7fb; }
+QMessageBox QLabel {
+    color: #17233c; background: transparent; min-width: 260px;
+}
+QMessageBox QPushButton {
+    min-width: 76px; background: #ffffff; color: #17233c;
+    border: 1px solid #9db2ce;
+}
+QMessageBox QPushButton:hover { background: #edf5ff; border-color: #1769e0; }
+QMessageBox QPushButton:pressed { background: #dcecff; }
+QMessageBox QPushButton:focus { border: 2px solid #1769e0; }
 """
