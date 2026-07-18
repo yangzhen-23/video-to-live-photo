@@ -6,6 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from scripts import capture_ui
 import scripts.verify_bundle as verifier
 
 
@@ -37,6 +38,13 @@ def test_make_sample_video_script_can_run_directly():
 def test_capture_ui_script_can_run_directly():
     result = run_help("capture_ui.py")
     assert result.returncode == 0, result.stderr
+
+
+def test_capture_ui_parser_accepts_dialog_mode():
+    args = capture_ui.build_parser().parse_args(["dialog.png", "--dialog"])
+
+    assert args.output == Path("dialog.png")
+    assert args.dialog is True
 
 
 def test_markdown_link_checker_can_run_directly():
