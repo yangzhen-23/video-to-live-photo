@@ -16,8 +16,8 @@ from livephoto.qt_compat import prepare_qt_runtime
 
 prepare_qt_runtime()
 
-from PySide6.QtGui import QFont, QFontDatabase
-from PySide6.QtWidgets import QApplication
+from PySide6.QtGui import QColor, QFont, QFontDatabase, QPalette
+from PySide6.QtWidgets import QApplication, QMessageBox
 
 from livephoto.ui.main_window import MainWindow
 
@@ -43,18 +43,53 @@ def load_capture_font(app: QApplication) -> str:
     raise RuntimeError("无法加载用于 UI 截图的中文字体")
 
 
-def main() -> None:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="保存 UI 验证截图")
     parser.add_argument("output", type=Path)
-    args = parser.parse_args()
+    parser.add_argument(
+        "--dialog",
+        action="store_true",
+        help="截取强制深色系统调色板下的完成弹窗",
+    )
+    return parser
+
+
+def _apply_dark_palette(app: QApplication) -> None:
+    palette = QPalette()
+    palette.setColor(QPalette.ColorRole.Window, QColor("#1f1f1f"))
+    palette.setColor(QPalette.ColorRole.WindowText, QColor("#f3f4f6"))
+    palette.setColor(QPalette.ColorRole.Base, QColor("#191919"))
+    palette.setColor(QPalette.ColorRole.Text, QColor("#f3f4f6"))
+    palette.setColor(QPalette.ColorRole.Button, QColor("#252525"))
+    palette.setColor(QPalette.ColorRole.ButtonText, QColor("#f3f4f6"))
+    app.setPalette(palette)
+
+
+def main() -> None:
+    args = build_parser().parse_args()
     args.output.parent.mkdir(parents=True, exist_ok=True)
     app = QApplication.instance() or QApplication([])
     load_capture_font(app)
+    if args.dialog:
+        _apply_dark_palette(app)
     window = MainWindow()
     window.show()
     app.processEvents()
-    if not window.grab().save(str(args.output)):
+    target = window
+    dialog = None
+    if args.dialog:
+        dialog = QMessageBox(window)
+        dialog.setIcon(QMessageBox.Icon.Information)
+        dialog.setWindowTitle("转换完成")
+        dialog.setText("已生成 2 个独立片段。\n可点击“打开成品文件夹”查看。")
+        dialog.setStandardButtons(QMessageBox.StandardButton.Ok)
+        dialog.show()
+        app.processEvents()
+        target = dialog
+    if not target.grab().save(str(args.output)):
         raise RuntimeError("UI 截图保存失败")
+    if dialog is not None:
+        dialog.close()
     window.close()
     print(args.output)
 

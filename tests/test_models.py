@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+import livephoto.core.models as models
 from livephoto.core.models import ConversionOptions, OutputBundle, VideoInfo
 
 
@@ -46,20 +47,37 @@ def test_options_reject_clip_past_source_end():
         make_options(start_time=4.0, duration=3.0, cover_time=5.0).validate(6.5)
 
 
+def test_options_validate_selected_targets():
+    make_options(targets=frozenset({"vivo", "windows"})).validate(8.0)
+
+    with pytest.raises(ValueError, match="至少选择"):
+        make_options(targets=frozenset()).validate(8.0)
+
+    with pytest.raises(ValueError, match="输出目标"):
+        make_options(targets=frozenset({"unknown"})).validate(8.0)
+
+
+def test_clip_segment_reuses_time_validation():
+    models.ClipSegment(2.0, 3.0, 3.5).validate(8.0)
+
+    with pytest.raises(ValueError, match="超出视频时长"):
+        models.ClipSegment(7.0, 2.0, 7.5).validate(8.0)
+
+
 def test_data_models_keep_paths_and_stream_details():
     info = VideoInfo(duration=6.0, width=1920, height=1080, fps=30.0, has_audio=True)
+    photo = Path("成品/IMG_20260718_120000.jpg")
+    manifest = Path("成品/manifest.json")
+    instructions = Path("成品/使用说明.txt")
     bundle = OutputBundle(
         directory=Path("成品"),
-        apple_photo=Path("成品/照片.jpg"),
-        apple_video=Path("成品/照片.mov"),
-        android_photo=Path("成品/照片MP.jpg"),
-        vivo_photo=Path("成品/IMG_20260718_120000.jpg"),
-        vivo_video=Path("成品/IMG_20260718_120000.mp4"),
-        windows_photo=Path("成品/照片_封面.jpg"),
-        windows_video=Path("成品/照片.mp4"),
-        manifest=Path("成品/manifest.json"),
+        outputs=(models.OutputFile("vivo_live_photo_image", photo),),
+        manifest=manifest,
+        instructions=instructions,
     )
     assert info.aspect_ratio == pytest.approx(16 / 9)
-    assert bundle.files[0] == bundle.apple_photo
+    assert bundle.by_role("vivo_live_photo_image") == photo
+    assert bundle.by_role("iphone_photo") is None
+    assert bundle.files == (photo, manifest, instructions)
     with pytest.raises(AttributeError):
         info.width = 1

@@ -7,7 +7,7 @@ import json
 import sys
 from pathlib import Path
 
-from .core.models import ConversionOptions
+from .core.models import OUTPUT_TARGETS, TARGET_ORDER, ConversionOptions
 from .core.pipeline import Converter
 from .core.tools import Toolchain
 
@@ -23,6 +23,12 @@ def build_parser() -> argparse.ArgumentParser:
     convert.add_argument("--cover", type=float, help="封面在原视频中的秒数，默认片段中点")
     convert.add_argument("--mute", action="store_true", help="移除声音")
     convert.add_argument("--quality", choices=("fast", "balanced", "high"), default="balanced")
+    convert.add_argument(
+        "--target",
+        action="append",
+        choices=TARGET_ORDER,
+        help="输出目标，可重复使用；默认生成全部",
+    )
     convert.add_argument("--json", action="store_true", help="以 JSON 输出结果")
     return parser
 
@@ -40,6 +46,7 @@ def main(argv: list[str] | None = None) -> int:
         cover_time=cover,
         mute=args.mute,
         quality=args.quality,
+        targets=frozenset(args.target) if args.target else OUTPUT_TARGETS,
     )
     try:
         converter = Converter(Toolchain.discover())

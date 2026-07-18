@@ -6,7 +6,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-from scripts.verify_bundle import REQUIRED_ROLES
+from scripts import capture_ui
+import scripts.verify_bundle as verifier
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -39,6 +40,13 @@ def test_capture_ui_script_can_run_directly():
     assert result.returncode == 0, result.stderr
 
 
+def test_capture_ui_parser_accepts_dialog_mode():
+    args = capture_ui.build_parser().parse_args(["dialog.png", "--dialog"])
+
+    assert args.output == Path("dialog.png")
+    assert args.dialog is True
+
+
 def test_markdown_link_checker_can_run_directly():
     result = run_help("check_markdown_links.py")
     assert result.returncode == 0, result.stderr
@@ -49,11 +57,14 @@ def test_repository_checker_can_run_directly():
     assert result.returncode == 0, result.stderr
 
 
-def test_verify_bundle_requires_vivo_roles():
-    assert REQUIRED_ROLES == {
-        "iphone_photo",
-        "iphone_video",
-        "android_motion_photo",
+def test_verify_bundle_maps_targets_to_required_roles():
+    assert verifier.TARGET_ROLES == {
+        "iphone": {"iphone_photo", "iphone_video"},
+        "android": {"android_motion_photo"},
+        "vivo": {"vivo_live_photo_image", "vivo_live_photo_video"},
+        "windows": {"windows_photo", "windows_video"},
+    }
+    assert verifier.required_roles(["vivo", "windows"]) == {
         "vivo_live_photo_image",
         "vivo_live_photo_video",
         "windows_photo",

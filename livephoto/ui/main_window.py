@@ -9,7 +9,6 @@ from PySide6.QtGui import QCloseEvent, QDesktopServices, QDragEnterEvent, QDropE
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
-    QDoubleSpinBox,
     QFileDialog,
     QFrame,
     QGridLayout,
@@ -18,6 +17,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMainWindow,
     QMessageBox,
+    QListWidget,
     QProgressBar,
     QPushButton,
     QScrollArea,
@@ -28,12 +28,21 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..core.models import ConversionOptions, OutputBundle, VideoInfo
+from ..core.models import TARGET_ORDER, ClipSegment, ConversionOptions, OutputBundle, VideoInfo
 from ..core.pipeline import Converter
 from ..core.probe import probe_video
 from ..core.tools import Toolchain
 from .theme import APP_STYLE
-from .worker import ConversionWorker, ProbeWorker
+from .time_spinbox import TimeSpinBox, format_time
+from .worker import BatchConversionWorker, ProbeWorker
+
+
+TARGET_LABELS = {
+    "iphone": "iPhone / iPad",
+    "android": "标准 Android",
+    "vivo": "vivo / iQOO",
+    "windows": "Windows",
+}
 
 
 class DropArea(QFrame):
@@ -113,7 +122,10 @@ class MainWindow(QMainWindow):
         self._probe_thread: QThread | None = None
         self._probe_worker: ProbeWorker | None = None
         self._convert_thread: QThread | None = None
-        self._convert_worker: ConversionWorker | None = None
+        self._convert_worker: BatchConversionWorker | None = None
+        self._segments = [ClipSegment()]
+        self._current_segment_index = 0
+        self._loading_segment = False
         self._build_ui()
         self._connect_signals()
         self.update_action_state()
@@ -137,7 +149,7 @@ class MainWindow(QMainWindow):
 
         title = QLabel("视频转 Live 图")
         title.setObjectName("appTitle")
-        subtitle = QLabel("一次生成 iPhone、标准 Android、vivo/iQOO 和 Windows 兼容文件")
+        subtitle = QLabel("按需生成 iPhone、Android、vivo/iQOO 或 Windows 动态照片文件")
         subtitle.setObjectName("subtitle")
         content.addWidget(title)
         content.addWidget(subtitle)
@@ -197,9 +209,50 @@ class MainWindow(QMainWindow):
         trim_card.body.addWidget(self.cover_slider)
         self.mute_check = QCheckBox("静音（不保留原视频声音）")
         trim_card.body.addWidget(self.mute_check)
+        segment_header = QHBoxLayout()
+        segment_header.addWidget(QLabel("片段列表（点击可切换编辑）"), 1)
+        self.add_segment_button = QPushButton("＋ 添加片段")
+        self.remove_segment_button = QPushButton("删除片段")
+        segment_header.addWidget(self.add_segment_button)
+        segment_header.addWidget(self.remove_segment_button)
+        trim_card.body.addLayout(segment_header)
+        self.segment_list = QListWidget()
+        self.segment_list.setObjectName("segmentList")
+        self.segment_list.setMaximumHeight(130)
+        trim_card.body.addWidget(self.segment_list)
         content.addWidget(trim_card)
 
-        output_card = StepCard("3", "选择保存位置", "程序会新建带时间戳的成品文件夹，不会覆盖原文件。")
+        target_card = StepCard(
+            "3",
+            "选择兼容设备",
+            "可同时选择多个设备；成品中只保留所选设备需要的文件。",
+        )
+        target_layout = QGridLayout()
+        self.target_checks: dict[str, QCheckBox] = {}
+        target_hints = {
+            "iphone": "同名 JPG + MOV",
+            "android": "单文件 Motion Photo",
+            "vivo": "OriginOS 同名 JPG + MP4",
+            "windows": "普通封面 JPG + MP4",
+        }
+        for index, target in enumerate(TARGET_ORDER):
+            check = QCheckBox(TARGET_LABELS[target])
+            check.setObjectName(f"target_{target}")
+            hint = QLabel(target_hints[target])
+            hint.setObjectName("targetHint")
+            row, column = divmod(index, 2)
+            cell = QVBoxLayout()
+            cell.setSpacing(2)
+            cell.addWidget(check)
+            cell.addWidget(hint)
+            target_layout.addLayout(cell, row, column)
+            self.target_checks[target] = check
+        target_layout.setColumnStretch(0, 1)
+        target_layout.setColumnStretch(1, 1)
+        target_card.body.addLayout(target_layout)
+        content.addWidget(target_card)
+
+        output_card = StepCard("4", "选择保存位置", "程序会为每个片段新建成品文件夹，不会覆盖原文件。")
         output_row = QHBoxLayout()
         self.output_edit = QLineEdit()
         self.output_edit.setObjectName("outputPath")
@@ -230,7 +283,7 @@ class MainWindow(QMainWindow):
         self.cancel_button.setEnabled(False)
         self.open_folder_button = QPushButton("打开成品文件夹")
         self.open_folder_button.setEnabled(False)
-        self.convert_button = QPushButton("生成 Live 图兼容包")
+        self.convert_button = QPushButton("生成所选设备的 Live 图")
         self.convert_button.setObjectName("primaryButton")
         self.convert_button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         buttons.addWidget(self.cancel_button)
@@ -243,15 +296,11 @@ class MainWindow(QMainWindow):
         content.addWidget(action_card)
         scroll.setWidget(container)
         root_layout.addWidget(scroll)
+        self._refresh_segment_list()
 
     @staticmethod
-    def _time_spin() -> QDoubleSpinBox:
-        spin = QDoubleSpinBox()
-        spin.setDecimals(2)
-        spin.setSingleStep(0.1)
-        spin.setRange(0.0, 99_999.0)
-        spin.setSuffix(" 秒")
-        return spin
+    def _time_spin() -> TimeSpinBox:
+        return TimeSpinBox()
 
     def _connect_signals(self) -> None:
         self.browse_input_button.clicked.connect(self.choose_input)
@@ -265,6 +314,11 @@ class MainWindow(QMainWindow):
         self.cover_spin.valueChanged.connect(self._cover_changed)
         self.start_slider.valueChanged.connect(lambda value: self.start_spin.setValue(value / 1000))
         self.cover_slider.valueChanged.connect(lambda value: self.cover_spin.setValue(value / 1000))
+        self.add_segment_button.clicked.connect(self.add_segment)
+        self.remove_segment_button.clicked.connect(self.remove_segment)
+        self.segment_list.currentRowChanged.connect(self._segment_selected)
+        for check in self.target_checks.values():
+            check.stateChanged.connect(self.update_action_state)
         self.convert_button.clicked.connect(self.start_conversion)
         self.cancel_button.clicked.connect(self.cancel_conversion)
         self.open_folder_button.clicked.connect(self.open_result_folder)
@@ -328,27 +382,17 @@ class MainWindow(QMainWindow):
         self._probe_worker = None
 
     def apply_video_info(self, info: VideoInfo) -> None:
-        self._video_info = info
         duration = max(0.0, info.duration)
-        selected_duration = min(self.duration_spin.value(), min(5.0, duration))
-        self.duration_spin.blockSignals(True)
-        self.duration_spin.setMaximum(max(1.0, min(5.0, duration)))
-        self.duration_spin.setValue(max(1.0, selected_duration))
-        self.duration_spin.blockSignals(False)
-        max_start = max(0.0, duration - self.duration_spin.value())
-        self.start_spin.setRange(0.0, max_start)
-        self.start_slider.setRange(0, round(max_start * 1000))
-        self._last_start = self.start_spin.value()
-        midpoint = self.start_spin.value() + self.duration_spin.value() / 2
-        self.cover_spin.setRange(
-            self.start_spin.value(), self.start_spin.value() + self.duration_spin.value()
-        )
-        self.cover_spin.setValue(midpoint)
-        self.cover_slider.setRange(
-            round(self.start_spin.value() * 1000),
-            round((self.start_spin.value() + self.duration_spin.value()) * 1000),
-        )
-        self.cover_slider.setValue(round(midpoint * 1000))
+        if duration < 1.0:
+            self._probe_failed("视频不足 1 秒，无法创建 Live 图片段")
+            return
+        self._video_info = info
+        selected_duration = min(3.0, min(5.0, duration))
+        midpoint = selected_duration / 2
+        self._segments = [ClipSegment(0.0, selected_duration, midpoint)]
+        self._current_segment_index = 0
+        self._refresh_segment_list()
+        self._load_segment(0)
         audio = "有声音" if info.has_audio else "无声音"
         self.info_label.setText(
             f"时长 {self._format_time(info.duration)}　｜　{info.width} × {info.height}　｜　"
@@ -360,8 +404,103 @@ class MainWindow(QMainWindow):
 
     @staticmethod
     def _format_time(seconds: float) -> str:
-        minutes, remaining = divmod(seconds, 60)
-        return f"{int(minutes):02d}:{remaining:05.2f}"
+        return format_time(seconds)
+
+    def _save_current_segment(self) -> None:
+        if (
+            self._loading_segment
+            or not 0 <= self._current_segment_index < len(self._segments)
+        ):
+            return
+        self._segments[self._current_segment_index] = ClipSegment(
+            self.start_spin.value(),
+            self.duration_spin.value(),
+            self.cover_spin.value(),
+        )
+        self._refresh_segment_list()
+
+    def _refresh_segment_list(self) -> None:
+        self.segment_list.blockSignals(True)
+        self.segment_list.clear()
+        for index, segment in enumerate(self._segments, start=1):
+            end = segment.start_time + segment.duration
+            self.segment_list.addItem(
+                f"片段 {index}　{format_time(segment.start_time)} → "
+                f"{format_time(end)}　封面 {format_time(segment.cover_time)}"
+            )
+        if self._segments:
+            self.segment_list.setCurrentRow(self._current_segment_index)
+        self.segment_list.blockSignals(False)
+        self.remove_segment_button.setEnabled(
+            not self._busy and len(self._segments) > 1
+        )
+        count = len(self._segments)
+        self.convert_button.setText(
+            "生成所选设备的 Live 图"
+            if count == 1
+            else f"生成 {count} 个片段的 Live 图"
+        )
+
+    def _load_segment(self, index: int) -> None:
+        if not 0 <= index < len(self._segments):
+            return
+        segment = self._segments[index]
+        source_duration = self._video_info.duration if self._video_info else 99_999.0
+        max_duration = max(1.0, min(5.0, source_duration))
+        max_start = max(0.0, source_duration - segment.duration)
+        self._loading_segment = True
+        for spin in (self.start_spin, self.duration_spin, self.cover_spin):
+            spin.blockSignals(True)
+        self.duration_spin.setRange(1.0, max_duration)
+        self.duration_spin.setValue(segment.duration)
+        self.start_spin.setRange(0.0, max_start)
+        self.start_spin.setValue(segment.start_time)
+        end = segment.start_time + segment.duration
+        self.cover_spin.setRange(segment.start_time, end)
+        self.cover_spin.setValue(segment.cover_time)
+        for spin in (self.start_spin, self.duration_spin, self.cover_spin):
+            spin.blockSignals(False)
+        self.start_slider.setRange(0, round(max_start * 1000))
+        self.start_slider.setValue(round(segment.start_time * 1000))
+        self.cover_slider.setRange(round(segment.start_time * 1000), round(end * 1000))
+        self.cover_slider.setValue(round(segment.cover_time * 1000))
+        self._last_start = segment.start_time
+        self._loading_segment = False
+        self.update_action_state()
+
+    def _segment_selected(self, row: int) -> None:
+        if row < 0 or row == self._current_segment_index:
+            return
+        self._save_current_segment()
+        self._current_segment_index = row
+        self._load_segment(row)
+
+    def add_segment(self) -> None:
+        self._save_current_segment()
+        current = self._segments[self._current_segment_index]
+        source_duration = self._video_info.duration if self._video_info else 3.0
+        proposed_start = current.start_time + current.duration
+        remaining = source_duration - proposed_start
+        if remaining >= 1.0:
+            start = proposed_start
+            duration = min(3.0, remaining)
+        else:
+            start = 0.0
+            duration = min(3.0, source_duration)
+        segment = ClipSegment(start, duration, start + duration / 2)
+        self._segments.append(segment)
+        self._current_segment_index = len(self._segments) - 1
+        self._refresh_segment_list()
+        self._load_segment(self._current_segment_index)
+
+    def remove_segment(self) -> None:
+        if len(self._segments) == 1:
+            return
+        index = self._current_segment_index
+        del self._segments[index]
+        self._current_segment_index = min(index, len(self._segments) - 1)
+        self._refresh_segment_list()
+        self._load_segment(self._current_segment_index)
 
     def _probe_failed(self, message: str) -> None:
         self._video_info = None
@@ -381,6 +520,7 @@ class MainWindow(QMainWindow):
         self.cover_spin.setRange(value, end)
         self.cover_spin.setValue(target)
         self.cover_slider.setRange(round(value * 1000), round(end * 1000))
+        self._save_current_segment()
         self.update_action_state()
 
     def _duration_changed(self, value: float) -> None:
@@ -394,22 +534,31 @@ class MainWindow(QMainWindow):
         if self.cover_spin.value() > end:
             self.cover_spin.setValue(end)
         self.cover_slider.setRange(round(start * 1000), round(end * 1000))
+        self._save_current_segment()
         self.update_action_state()
 
     def _cover_changed(self, value: float) -> None:
         self.cover_slider.blockSignals(True)
         self.cover_slider.setValue(round(value * 1000))
         self.cover_slider.blockSignals(False)
+        self._save_current_segment()
         self.update_action_state()
 
-    def update_action_state(self) -> None:
+    def update_action_state(self, *_args) -> None:
+        has_target = any(box.isChecked() for box in self.target_checks.values())
         ready = (
             not self._busy
             and self._video_info is not None
             and Path(self.input_edit.text().strip()).is_file()
             and bool(self.output_edit.text().strip())
+            and has_target
         )
         self.convert_button.setEnabled(ready)
+        if not self._busy and self._video_info is not None:
+            if not has_target:
+                self.status_label.setText("请至少选择一种兼容设备")
+            elif self.status_label.text() == "请至少选择一种兼容设备":
+                self.status_label.setText("视频已就绪")
 
     def set_busy(self, busy: bool) -> None:
         self._busy = busy
@@ -426,36 +575,68 @@ class MainWindow(QMainWindow):
             self.mute_check,
             self.output_edit,
             self.browse_output_button,
+            self.segment_list,
+            self.add_segment_button,
+            self.remove_segment_button,
         ):
             widget.setEnabled(not busy)
+        for check in self.target_checks.values():
+            check.setEnabled(not busy)
+        if not busy:
+            self.remove_segment_button.setEnabled(len(self._segments) > 1)
         self.cancel_button.setEnabled(busy)
         self.update_action_state()
+
+    def _build_conversion_options(self) -> tuple[ConversionOptions, ...]:
+        if self._video_info is None:
+            raise ValueError("请先选择并分析视频")
+        self._save_current_segment()
+        targets = frozenset(
+            target for target, box in self.target_checks.items() if box.isChecked()
+        )
+        if not targets:
+            raise ValueError("请至少选择一种兼容设备")
+        input_path = Path(self.input_edit.text().strip())
+        output_dir = Path(self.output_edit.text().strip())
+        total = len(self._segments)
+        results = []
+        for index, segment in enumerate(self._segments, start=1):
+            try:
+                segment.validate(self._video_info.duration)
+            except ValueError as exc:
+                self.segment_list.setCurrentRow(index - 1)
+                raise ValueError(f"片段 {index}：{exc}") from exc
+            results.append(
+                ConversionOptions(
+                    input_path=input_path,
+                    output_dir=output_dir,
+                    start_time=segment.start_time,
+                    duration=segment.duration,
+                    cover_time=segment.cover_time,
+                    mute=self.mute_check.isChecked(),
+                    quality=str(self.quality_combo.currentData()),
+                    targets=targets,
+                    segment_label=f"片段{index:02d}" if total > 1 else "",
+                )
+            )
+        return tuple(results)
 
     def start_conversion(self) -> None:
         if self._video_info is None or self._busy:
             return
         try:
             toolchain = self._toolchain or Toolchain.discover()
-            options = ConversionOptions(
-                input_path=Path(self.input_edit.text().strip()),
-                output_dir=Path(self.output_edit.text().strip()),
-                start_time=self.start_spin.value(),
-                duration=self.duration_spin.value(),
-                cover_time=self.cover_spin.value(),
-                mute=self.mute_check.isChecked(),
-                quality=str(self.quality_combo.currentData()),
-            )
-            options.validate(self._video_info.duration)
+            options = self._build_conversion_options()
         except Exception as exc:
             QMessageBox.warning(self, "无法开始", str(exc))
             return
         self.progress_bar.setValue(0)
         self.status_label.setText("开始转换")
-        self.log_edit.append("— 开始生成跨平台兼容包 —")
+        self.log_edit.append(f"— 开始生成 {len(options)} 个独立片段 —")
         self.open_folder_button.setEnabled(False)
         self.set_busy(True)
         thread = QThread(self)
-        worker = ConversionWorker(Converter(toolchain), options)
+        worker = BatchConversionWorker(Converter(toolchain), options)
         worker.moveToThread(thread)
         thread.started.connect(worker.run)
         worker.progress.connect(self._on_progress)
@@ -475,14 +656,19 @@ class MainWindow(QMainWindow):
         if not self.log_edit.toPlainText().endswith(text):
             self.log_edit.append(f"{value:3d}%  {text}")
 
-    def _on_completed(self, bundle: OutputBundle) -> None:
-        self._result_dir = bundle.directory
+    def _on_completed(self, bundles: tuple[OutputBundle, ...]) -> None:
+        self._result_dir = Path(self.output_edit.text().strip())
         self.progress_bar.setValue(100)
         self.status_label.setText("转换完成")
-        self.log_edit.append(f"✓ 成品已保存到：{bundle.directory}")
+        for index, bundle in enumerate(bundles, start=1):
+            self.log_edit.append(f"✓ 片段 {index} 已保存到：{bundle.directory}")
         self.set_busy(False)
         self.open_folder_button.setEnabled(True)
-        QMessageBox.information(self, "转换完成", "兼容包已经生成。\n可点击“打开成品文件夹”查看。")
+        QMessageBox.information(
+            self,
+            "转换完成",
+            f"已生成 {len(bundles)} 个独立片段。\n可点击“打开成品文件夹”查看。",
+        )
 
     def _on_failed(self, message: str) -> None:
         self.set_busy(False)

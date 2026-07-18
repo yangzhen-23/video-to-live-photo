@@ -2,7 +2,16 @@
 
 ## 为什么需要多套文件
 
-Apple Live Photo、Android Motion Photo、vivo/iQOO OriginOS 动态照片和 Windows 普通媒体没有统一容器。本程序为同一片段生成多套文件，并提供 MP4 作为通用回退。
+Apple Live Photo、Android Motion Photo、vivo/iQOO OriginOS 动态照片和 Windows 普通媒体没有统一容器。本程序让用户选择一个或多个目标设备，并且只生成所选设备需要的文件；如果需要普通 MP4 回退，请同时勾选 Windows。
+
+## 如何选择输出设备
+
+- 只使用 iQOO/vivo 手机：勾选“vivo / iQOO”；
+- 只在 Windows 查看：勾选“Windows”；
+- 同时需要手机原生动态照片和电脑通用文件：同时勾选相应手机与 Windows；
+- 不确定 Android 相册支持哪种格式：可以同时选择“标准 Android”和手机厂商对应选项进行测试。
+
+界面默认不选择设备，至少勾选一项后才能开始。一个视频可以添加多个片段，每个片段分别生成一个目录，未选择平台的文件和说明不会出现在成品中。
 
 ## iPhone / iPad
 

@@ -57,6 +57,34 @@ QLabel#infoPill {
     color: #315272; background: #edf5ff; border-radius: 8px; padding: 7px 10px;
 }
 QLabel#statusLabel { color: #40516d; font-weight: 600; }
+QLabel#targetHint { color: #718096; font-size: 12px; padding-left: 23px; }
+QListWidget#segmentList {
+    background: #f9fbfd; color: #263650; border: 1px solid #cfd9e7;
+    border-radius: 8px; outline: none; padding: 5px;
+}
+QListWidget#segmentList::item {
+    min-height: 30px; padding: 3px 8px; color: #263650; border-radius: 5px;
+}
+QListWidget#segmentList::item:hover { background: #edf5ff; color: #17233c; }
+QListWidget#segmentList::item:selected { background: #dcecff; color: #10213d; }
 QCheckBox { spacing: 8px; color: #263650; }
 QCheckBox:disabled { color: #718096; }
+QCheckBox::indicator:unchecked {
+    width: 16px; height: 16px; border: 1px solid #aab8cb;
+    border-radius: 4px; background: #f9fbfd;
+}
+QCheckBox::indicator:unchecked:hover {
+    border: 2px solid #1769e0; background: #edf5ff;
+}
+QMessageBox { background: #f4f7fb; }
+QMessageBox QLabel { color: #17233c; background: transparent; }
+QMessageBox QLabel#qt_msgbox_label { min-width: 0px; }
+QMessageBox QLabel#qt_msgboxex_icon_label { min-width: 0px; }
+QMessageBox QPushButton {
+    min-width: 76px; background: #ffffff; color: #17233c;
+    border: 1px solid #9db2ce;
+}
+QMessageBox QPushButton:hover { background: #edf5ff; border-color: #1769e0; }
+QMessageBox QPushButton:pressed { background: #dcecff; }
+QMessageBox QPushButton:focus { border: 2px solid #1769e0; }
 """
