@@ -6,7 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from scripts.verify_bundle import REQUIRED_ROLES
+import scripts.verify_bundle as verifier
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -49,11 +49,14 @@ def test_repository_checker_can_run_directly():
     assert result.returncode == 0, result.stderr
 
 
-def test_verify_bundle_requires_vivo_roles():
-    assert REQUIRED_ROLES == {
-        "iphone_photo",
-        "iphone_video",
-        "android_motion_photo",
+def test_verify_bundle_maps_targets_to_required_roles():
+    assert verifier.TARGET_ROLES == {
+        "iphone": {"iphone_photo", "iphone_video"},
+        "android": {"android_motion_photo"},
+        "vivo": {"vivo_live_photo_image", "vivo_live_photo_video"},
+        "windows": {"windows_photo", "windows_video"},
+    }
+    assert verifier.required_roles(["vivo", "windows"]) == {
         "vivo_live_photo_image",
         "vivo_live_photo_video",
         "windows_photo",

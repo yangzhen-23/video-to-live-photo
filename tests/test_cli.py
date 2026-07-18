@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 from livephoto.cli import build_parser, main
-from livephoto.core.models import OutputBundle
+from livephoto.core.models import OUTPUT_TARGETS, OutputBundle, OutputFile
 
 
 def test_cli_parser_exposes_beginner_options():
@@ -25,6 +25,10 @@ def test_cli_parser_exposes_beginner_options():
             "--mute",
             "--quality",
             "high",
+            "--target",
+            "vivo",
+            "--target",
+            "windows",
         ]
     )
     assert args.command == "convert"
@@ -35,28 +39,21 @@ def test_cli_parser_exposes_beginner_options():
         True,
         "high",
     )
+    assert args.target == ["vivo", "windows"]
 
 
 def test_cli_json_success_uses_middle_cover_by_default(monkeypatch, tmp_path: Path, capsys):
     captured = {}
     result_dir = tmp_path / "result"
     result_dir.mkdir()
-    paths = [
-        result_dir / name
-        for name in (
-            "a.jpg",
-            "a.mov",
-            "aMP.jpg",
-            "IMG_20260718_120000.jpg",
-            "IMG_20260718_120000.mp4",
-            "w.jpg",
-            "w.mp4",
-            "manifest.json",
-        )
-    ]
-    for path in paths:
-        path.write_bytes(b"x")
-    bundle = OutputBundle(result_dir, *paths)
+    photo = result_dir / "a.jpg"
+    photo.write_bytes(b"x")
+    bundle = OutputBundle(
+        result_dir,
+        (OutputFile("windows_photo", photo),),
+        result_dir / "manifest.json",
+        result_dir / "使用说明.txt",
+    )
 
     class FakeConverter:
         def __init__(self, _tools):
@@ -84,4 +81,43 @@ def test_cli_json_success_uses_middle_cover_by_default(monkeypatch, tmp_path: Pa
     output = json.loads(capsys.readouterr().out)
     assert code == 0
     assert captured["options"].cover_time == 2.0
+    assert captured["options"].targets == OUTPUT_TARGETS
     assert output["output_directory"] == str(result_dir)
+
+
+def test_cli_passes_only_explicit_targets(monkeypatch, tmp_path: Path):
+    captured = {}
+    bundle = OutputBundle(
+        tmp_path,
+        (),
+        tmp_path / "manifest.json",
+        tmp_path / "使用说明.txt",
+    )
+
+    class FakeConverter:
+        def __init__(self, _tools):
+            pass
+
+        def convert(self, options, progress=None):
+            captured["options"] = options
+            return bundle
+
+    monkeypatch.setattr("livephoto.cli.Toolchain.discover", lambda: object())
+    monkeypatch.setattr("livephoto.cli.Converter", FakeConverter)
+
+    code = main(
+        [
+            "convert",
+            str(tmp_path / "input.mp4"),
+            "--output",
+            str(tmp_path),
+            "--target",
+            "vivo",
+            "--target",
+            "windows",
+            "--json",
+        ]
+    )
+
+    assert code == 0
+    assert captured["options"].targets == frozenset({"vivo", "windows"})
