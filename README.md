@@ -4,14 +4,16 @@
 ![Platform](https://img.shields.io/badge/Platform-Windows-0078D4?logo=windows)
 ![License](https://img.shields.io/badge/License-Apache--2.0-green)
 
-一个面向普通用户的 Windows 桌面工具：选择一段视频，一次生成 iPhone Live Photo、标准 Android Motion Photo、vivo/iQOO OriginOS 动态照片，以及 Windows 通用封面和视频。
+一个面向普通用户的 Windows 桌面工具：从视频中添加一个或多个片段，选择一个或多个目标设备，按需生成 iPhone Live Photo、标准 Android Motion Photo、vivo/iQOO OriginOS 动态照片或 Windows 通用封面和视频。
 
 ![视频转 Live 图界面](docs/assets/application.png)
 
 ## 核心特性
 
-- **一次生成多套格式**：无需理解不同平台的封装差异。
-- **中文图形界面**：拖入视频，选择片段、封面和保存位置即可。
+- **按设备选择输出**：可同时选择多个设备，成品中不会混入未选择平台的文件。
+- **多片段独立生成**：一个视频可添加多个片段，每个片段分别得到独立成品目录。
+- **六十进制时间**：开始、时长和封面显示为 `00:03.00`，长视频自动显示小时。
+- **中文图形界面**：拖入视频，选择片段、设备和保存位置即可。
 - **完全本地处理**：不上传视频，不依赖云服务。
 - **保留声音**：默认输出 H.264/AAC，也可选择静音。
 - **安全输出**：新建带时间戳的成品目录，不覆盖原文件。
@@ -26,7 +28,7 @@
 | vivo / iQOO | 同名 IMG_*.jpg + IMG_*.mp4 | 两个文件一起复制到 DCIM/Camera，使用 OriginOS 相册 |
 | Windows | 普通 JPG + H.264/AAC MP4 | “照片”查看封面，“媒体播放器”播放视频 |
 
-不同平台没有统一的动态照片容器，所以程序生成的是一个兼容包，而不是伪装成单个万能文件。详细传输方法与限制见 [兼容性说明](docs/COMPATIBILITY.md)。
+不同平台没有统一的动态照片容器，所以程序会按你的设备选择生成相应文件，而不是伪装成单个万能文件。详细传输方法与限制见 [兼容性说明](docs/COMPATIBILITY.md)。
 
 ## 下载与使用
 
@@ -35,14 +37,15 @@
 1. 解压完整 ZIP，不能只复制其中的 EXE。
 2. 双击“视频转Live图.exe”。
 3. 拖入视频，或点击“浏览视频”。
-4. 保持默认 3 秒和均衡画质，选择保存位置。
-5. 点击“生成 Live 图兼容包”。
+4. 使用 `00:03.00` 格式调整开始、时长和封面；需要时点击“添加片段”。
+5. 至少勾选一种兼容设备并选择保存位置。
+6. 点击“生成所选设备的 Live 图”。
 
-程序完成后会打开一个独立成品目录，并附带“使用说明.txt”。
+每个片段都会得到一个独立成品目录，并附带仅针对所选设备的“使用说明.txt”。
 
 ## 成品文件说明
 
-假设输入视频名为“假期.mp4”：
+假设输入视频名为“假期.mp4”，下表文件只会在选中相应设备时生成：
 
 | 文件 | 用途 |
 |---|---|
@@ -78,6 +81,14 @@ python -m venv .venv
 ~~~powershell
 .\.venv\Scripts\python.exe -m livephoto convert "输入.mp4" --output "成品目录"
 ~~~
+
+只生成 vivo/iQOO 与 Windows 文件：
+
+~~~powershell
+.\.venv\Scripts\python.exe -m livephoto convert "输入.mp4" --output "成品目录" --target vivo --target windows
+~~~
+
+`--target` 可重复使用，可选值为 `iphone`、`android`、`vivo`、`windows`；省略时为了兼容旧版命令行用法，仍生成全部目标。
 
 ## 测试与构建
 

@@ -23,3 +23,21 @@ def test_public_documentation_links_are_valid():
     files = [root / "README.md", *sorted((root / "docs").glob("*.md"))]
 
     assert find_broken_links(root, files) == []
+
+
+def test_public_documentation_describes_selective_multi_clip_workflow():
+    root = Path(__file__).resolve().parents[1]
+    readme = (root / "README.md").read_text(encoding="utf-8")
+    architecture = (root / "docs" / "ARCHITECTURE.md").read_text(encoding="utf-8")
+    compatibility = (root / "docs" / "COMPATIBILITY.md").read_text(encoding="utf-8")
+    learning_guide = (root / "docs" / "PROJECT_CODE_AND_GIT_GUIDE.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert "选择一个或多个目标设备" in readme
+    assert "00:03.00" in readme
+    assert "--target vivo --target windows" in readme
+    assert "BatchConversionWorker" in architecture
+    assert "只生成所选设备" in compatibility
+    assert "schema_version 当前为 3" in learning_guide
+    assert "time_spinbox.py" in learning_guide

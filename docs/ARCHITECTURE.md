@@ -10,7 +10,9 @@ UI 和 CLI 共用同一套核心流水线，避免出现“界面版与命令行
 
 ~~~mermaid
 flowchart LR
-    UI["PySide6 UI / CLI"] --> Pipeline["Converter pipeline"]
+    UI["PySide6 UI / CLI"] --> Targets["所选设备 + 一个或多个片段"]
+    Targets --> Batch["BatchConversionWorker"]
+    Batch --> Pipeline["每个片段调用一次 Converter"]
     Pipeline --> FFmpeg["FFmpeg transcode"]
     FFmpeg --> Apple["Apple Live Photo"]
     FFmpeg --> Android["Android Motion Photo"]
@@ -23,11 +25,11 @@ flowchart LR
 
 ### livephoto/core
 
-- models.py：转换选项、视频信息和输出 bundle。
+- models.py：转换目标、片段、视频信息和按角色组织的输出 bundle。
 - tools.py：发现 FFmpeg/FFprobe，并适配源码和打包环境。
 - probe.py：读取时长、尺寸、帧率、旋转和声音轨。
 - transcode.py：生成 FFmpeg 命令并报告进度。
-- pipeline.py：编排转换、封装、校验、清单和原子发布。
+- pipeline.py：一次生成共用视频和封面，再按所选设备封装、校验、写清单并原子发布。
 - apple.py：Apple JPEG MakerNote、MOV content identifier 和 still-image-time。
 - android.py：Android Motion Photo 1.0 XMP 和尾部 MP4。
 - vivo.py：vivo JPEG 私有尾部、MP4 vivoMediaExtInfo UUID box 和配对校验。
@@ -35,8 +37,9 @@ flowchart LR
 
 ### livephoto/ui
 
-- main_window.py：窗口布局、输入校验和用户交互。
-- worker.py：探测与转换后台任务，避免阻塞界面。
+- main_window.py：窗口布局、设备复选框、多片段列表、输入校验和用户交互。
+- time_spinbox.py：在 `MM:SS.cc` 与内部浮点秒之间格式化和解析。
+- worker.py：探测与 `BatchConversionWorker` 多片段后台任务，避免阻塞界面。
 - theme.py：界面样式。
 
 ### scripts
@@ -49,13 +52,14 @@ flowchart LR
 
 ## 输出发布
 
-Converter 先在保存目录建立唯一临时目录。所有转码、封装和校验完成后才使用原子目录替换发布最终成品；任一步失败都会清理临时目录，不留下半组配对文件。
+Converter 为每个片段在保存目录建立唯一临时目录。共用 H.264/AAC MP4 和 JPEG 只生成一次，所选平台复用它们完成封装；未选择平台的封装函数不会运行。所有封装和校验完成后才使用原子目录替换发布最终成品；任一步失败都会清理当前临时目录，不留下半组配对文件。多片段批处理中，已经完整发布的前序片段会保留。
 
 manifest.json 记录：
 
 - 源文件名和转换参数；
-- Apple 与 vivo 配对 ID；
-- 每个输出文件的角色、大小和 SHA-256；
+- `schema_version: 3`、片段标签和目标设备列表；
+- 实际需要的 Apple 与 vivo 配对 ID；
+- 仅记录实际输出文件的角色、大小和 SHA-256；
 - 原视频的基本流信息。
 
 ## 依赖边界
