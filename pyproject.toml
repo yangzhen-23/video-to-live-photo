@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "video-to-live-photo"
-version = "0.2.0"
+version = "0.3.0"
 description = "将视频转换为 iPhone、Android、vivo/iQOO 和 Windows 动态照片兼容文件"
 authors = [{ name = "杨振" }]
 readme = "README.md"
